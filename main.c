@@ -162,24 +162,26 @@ void move_rabbit(Rabbit *rabbit, Cell* system){
     else
     {
         //Standard movement logic for both animals
-    int counter = (GEN + x + y) % P;
+        int counter = (GEN + x + y) % P;
 
-    for (int i = 0; i < 4; i++)
-    {
-        if (answers[i] != NULL)
+        for (int i = 0; i < 4; i++)
         {
-            printf("Checking option (%d, %d)\n", answers[i]->x, answers[i]->y);
-
-            if (counter == 0)
+            if (answers[i] != NULL)
             {
-                rabbit_cell_shift(rabbit, answers[i]);
-                return;
+                printf("Checking option (%d, %d)\n", answers[i]->x, answers[i]->y);
+
+                if (counter == 0)
+                {
+                    rabbit_cell_shift(rabbit, answers[i]);
+                    return;
+                }
+                counter--;
             }
-            counter--;
         }
+
     }
 
-}
+    
 }
 
 void rabbit_cell_shift(Rabbit *rabbit, Cell* to){
