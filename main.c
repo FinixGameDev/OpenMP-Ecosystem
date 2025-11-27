@@ -37,7 +37,6 @@ Fox* FOXES;
 
 int GEN;
 
-
 Cell* load_ecosystem(char * argv[]);
 void display_ecosystem(Cell system[]);
 void rabbit_cell_shift(Rabbit *rabbit, Cell* to);
@@ -48,50 +47,63 @@ int output_ecosystem(Cell* system, char* filename);
 void generate_fox(int x, int y,Cell* system);
 void generate_rabbit(int x, int y,Cell* system);
 void kill_rabbits();
+Rabbit* get_rabbit(int x, int y);
+Fox* get_fox(int x, int y);
+void kill_fox(Fox* fox);
+void kill_rabbit(Rabbit* rabbit);
+void check_rabbit_overlap();
+void check_fox_overlap();
 
 int main(int argc, char *argv[])
 {
     Cell* system = load_ecosystem(argv);
     display_ecosystem(system);
+    GEN = N_GEN;
 
-    GEN = 0;
-
-    while (GEN < N_GEN)
+    while (N_GEN > 0)
     {
         //RUN SIMULATION HERE
         for (int i = 0; i < R * C; i++){
             if (RABBITS[i].cell != NULL)
                 move_rabbit(&RABBITS[i], system);
-        
+        }
+
+        check_rabbit_overlap();
+
+        for (int i = 0; i < R*C; i++)
+        {
             if (FOXES[i].cell != NULL)
                 move_fox(&FOXES[i], system);
         }
+        
+        check_fox_overlap();
 
         kill_rabbits();
 
-        for (int r = 0; r < R * C; r++)
-        {
-            if (RABBITS[r].cell != NULL)
-            {
-                printf("RABBIT %d %d\n", RABBITS[r].cell->x, RABBITS[r].cell->y);
-            }
-        }
+        // DISPLAY CURRENT STATE
+        // for (int r = 0; r < R * C; r++)
+        // {
+        //     if (RABBITS[r].cell != NULL)
+        //     {
+        //         printf("RABBIT %d %d\n", RABBITS[r].cell->x, RABBITS[r].cell->y);
+        //     }
+        // }
 
-        for (int f = 0; f < R * C; f++)
-        {
-            if (FOXES[f].cell != NULL)
-            {
-                printf("FOX %d %d\n", FOXES[f].cell->x, FOXES[f].cell->y);
-            }
-        }
+        // for (int f = 0; f < R * C; f++)
+        // {
+        //     if (FOXES[f].cell != NULL)
+        //     {
+        //         printf("FOX %d %d\n", FOXES[f].cell->x, FOXES[f].cell->y);
+        //     }
+        // }
 
-        printf("Gen: %d\n", N_GEN);
-        display_ecosystem(system);
+        printf("Gen: %d\n", GEN - N_GEN);
         N_GEN--;
     }
 
     printf("Configuration: %d %d %d %d %d %d %d\n", GEN_PROC_RABBITS, GEN_PROC_FOXES, GEN_FOOD_FOXES, N_GEN, R, C, N);
-    output_ecosystem(system, "output.txt");
+    display_ecosystem(system);
+    output_ecosystem(system, "output");
     free(system);
     free(RABBITS);
     free(FOXES);
@@ -111,7 +123,7 @@ void move_rabbit(Rabbit *rabbit, Cell* system){
         north = NULL;
     else
     {
-        north = &system[(y - 1) * R + x];
+        north = &system[(y - 1) * C + x];
         
         if (north->name != '*' && north->name != 'F')
             P++;
@@ -119,22 +131,22 @@ void move_rabbit(Rabbit *rabbit, Cell* system){
             north = NULL;
     }   
     
-    if (y + 1 > C)
+    if (y + 1 >= R)
         south = NULL;
     else
     {
-        south = &system[(y + 1) * R + x];
+        south = &system[(y + 1) * C + x];
         if (south->name != '*' && south->name != 'F')
             P++;
         else
             south = NULL;
     }
 
-    if (x + 1 > R)
+    if (x + 1 >= C)
         east = NULL;
     else
     {
-        east = &system[y * R + x + 1];
+        east = &system[y * C + x + 1];
         if (east->name != '*' && east->name != 'F')
             P++;
         else 
@@ -146,7 +158,7 @@ void move_rabbit(Rabbit *rabbit, Cell* system){
         west = NULL;
     else
     {
-        west = &system[y * R + x - 1];
+        west = &system[y * C + x - 1];
         if (west->name != '*' && west->name != 'F')
             P++;
         else
@@ -168,20 +180,25 @@ void move_rabbit(Rabbit *rabbit, Cell* system){
         {
             if (answers[i] != NULL)
             {
-                printf("Checking option (%d, %d)\n", answers[i]->x, answers[i]->y);
-
                 if (counter == 0)
                 {
                     rabbit_cell_shift(rabbit, answers[i]);
-                    return;
+                    break;
                 }
+
                 counter--;
             }
         }
 
     }
 
-    
+    if (rabbit->proc_age >= GEN_PROC_RABBITS)
+    {
+        generate_rabbit(x, y, system);
+        rabbit->proc_age = 0;
+    }
+
+    rabbit->proc_age++;
 }
 
 void rabbit_cell_shift(Rabbit *rabbit, Cell* to){
@@ -189,18 +206,73 @@ void rabbit_cell_shift(Rabbit *rabbit, Cell* to){
     int y = rabbit->cell->y;
     
     to->name = 'R';
-    rabbit->cell->name = ' ';
+    rabbit->cell->name = '.';
     rabbit->cell = to;
 
-    printf("Rabbit moved at (%d, %d) to (%d, %d)\n", x, y, to->x, to->y);
+    //printf("Rabbit moved at (%d, %d) to (%d, %d)\n", x, y, to->x, to->y);
 }
 
 void fox_cell_shift(Fox *fox, Cell* to){
     to->name = 'F';
-    fox->cell->name = ' ';
+    fox->cell->name = '.';
     fox->cell = to;
 
-    printf("Fox moved to (%d, %d)\n", to->x, to->y);
+    //printf("Fox moved to (%d, %d)\n", to->x, to->y);
+}
+
+void check_rabbit_overlap(){
+    for (int i = 0; i < C * R; i++)
+    {
+        if (RABBITS[i].cell != NULL)
+        {
+            for (int j = i + 1; j < C * R; j++)
+            {
+                if (RABBITS[j].cell != NULL)
+                {
+                    if (RABBITS[i].cell->x == RABBITS[j].cell->x && RABBITS[i].cell->y == RABBITS[j].cell->y)
+                    {
+                        if (RABBITS[i].gens > RABBITS[j].gens)
+                            kill_rabbit(&RABBITS[j]);
+                        else
+                            kill_rabbit(&RABBITS[i]);
+
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void check_fox_overlap(){
+    for (int i = 0; i < C * R; i++)
+    {
+        if (FOXES[i].cell != NULL)
+        {
+            for (int j = i + 1; j < C * R; j++)
+            {
+                if (FOXES[j].cell != NULL)
+                {
+                    if (FOXES[i].cell->x == FOXES[j].cell->x && FOXES[i].cell->y == FOXES[j].cell->y)
+                    {
+                        if (FOXES[i].gens > FOXES[j].gens)
+                            kill_fox(&FOXES[j]);
+                        else if (FOXES[i].gens == FOXES[j].gens)
+                        {
+                            if (FOXES[i].food > FOXES[j].food)
+                                kill_fox(&FOXES[j]);
+                            else
+                                kill_fox(&FOXES[i]);
+                        }
+                        else
+                            kill_fox(&FOXES[i]);
+                        
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
 
 void kill_rabbits(){
@@ -208,9 +280,7 @@ void kill_rabbits(){
     {
         if (RABBITS[i].cell != NULL && RABBITS[i].cell->name == 'F')  
         {
-            RABBITS[i].cell = NULL;
-            N--;
-            return;
+            kill_rabbit(&RABBITS[i]);
         }   
     }
 }
@@ -220,18 +290,24 @@ void kill_fox(Fox* fox){
     N--;
 }
 
+void kill_rabbit(Rabbit* rabbit){
+    rabbit->cell = NULL;
+    N--;
+}
+
 void generate_rabbit(int x, int y,Cell* system){
     for (int i = 0; i < R * C; i++)
     {
         if (RABBITS[i].cell == NULL)
         {
-            system[y * R + x].name = 'R';
-            RABBITS[i].cell = &system[y * R + x];
+            system[y * C + x].name = 'R';
+            RABBITS[i].cell = &system[y * C + x];
             RABBITS[i].gens = 0;
             RABBITS[i].proc_age = 0;
             N++;
+
+            //printf("A rabbit has been born at (%d, %d).\n", x, y);
             return;
-            
         }
     }
 }
@@ -242,11 +318,14 @@ void generate_fox(int x, int y,Cell* system){
         if (FOXES[i].cell == NULL)
         {
             system[y * R + x].name = 'F';
-            FOXES[i].cell = &system[y * R + x];
+            FOXES[i].cell = &system[y * C + x];
             FOXES[i].gens = 0;
             FOXES[i].proc_age = 0;
             FOXES[i].food = 0;
             N++;
+
+
+            //printf("A fox has been born at (%d, %d).\n", x, y);
             return;
             
         }
@@ -277,7 +356,7 @@ void move_fox(Fox* fox, Cell* system){
             P++;
     }   
     
-    if (y + 1 > R)
+    if (y + 1 >= R)
         south = NULL;
     else
     {
@@ -290,7 +369,7 @@ void move_fox(Fox* fox, Cell* system){
             P++;
     }
 
-    if (x + 1 > C)
+    if (x + 1 >= C)
         east = NULL;
     else
     {
@@ -331,7 +410,6 @@ void move_fox(Fox* fox, Cell* system){
                 {
                     fox_cell_shift(fox, answers[i]);
                     fox->food = 0;
-                    return;
                 }
                 counter--;
             }
@@ -339,22 +417,39 @@ void move_fox(Fox* fox, Cell* system){
         }
         
     }
+    else{
 
-    //Standard movement logic for both animals
-    int counter = (N_GEN + x + y) % P;
-
-    for (int i = 0; i < 4; i++)
-    {
-        if (answers[i] != NULL)
+        if (fox->food >= GEN_FOOD_FOXES)
         {
-            if (counter == 0)
+            kill_fox(fox);
+            system[y * R + x].name = '.';
+            return;
+        }
+
+        //Standard movement logic for both animals
+        int counter = (GEN + x + y) % P;
+
+        for (int i = 0; i < 4; i++)
+        {
+            if (answers[i] != NULL)
             {
-                fox_cell_shift(fox, answers[i]);
-                return;
+                if (counter == 0)
+                {                    
+                    fox_cell_shift(fox, answers[i]);
+                }
+                counter--;
             }
-            counter--;
         }
     }
+
+    if (fox->proc_age >= GEN_PROC_FOXES)
+    {
+        generate_fox(x, y, system);
+        fox->proc_age = 0;
+    }
+
+    fox->food++;
+    fox->proc_age++;
 }
 
 int output_ecosystem(Cell* system, char* filename){
@@ -366,24 +461,49 @@ int output_ecosystem(Cell* system, char* filename){
 
     fprintf(file, "%d %d %d %d %d %d %d\n", GEN_PROC_RABBITS, GEN_PROC_FOXES, GEN_FOOD_FOXES, N_GEN, R, C, N);
 
-    for (int r = 0; r < sizeof(RABBITS) / sizeof(Rabbit); r++)
-    {
-        if (RABBITS[r].cell != NULL)
-        {
-            fprintf(file, "RABBIT %d %d\n", RABBITS[r].cell->x, RABBITS[r].cell->y);
-        }
-    }
 
-    for (int f = 0; f < sizeof(FOXES) / sizeof(Fox); f++)
+    for (int i = 0; i < R * C; i++)
     {
-        if (FOXES[f].cell != NULL)
+        if (system[i].name == '*')
         {
-            fprintf(file, "FOX %d %d\n", FOXES[f].cell->x, FOXES[f].cell->y);
+            fprintf(file, "ROCK %d %d\n", system[i].x, system[i].y);
+        }
+        else if (system[i].name == 'R')
+        {
+            fprintf(file, "RABBIT %d %d\n", system[i].x, system[i].y);
+        }
+        else if (system[i].name == 'F')
+        {
+            fprintf(file, "FOX %d %d\n", system[i].x, system[i].y);
         }
     }
 
     fclose(file);
     return 0;
+}
+
+Rabbit* get_rabbit(int x, int y){
+    for (int i = 0; i < R * C; i++)
+    {
+        if (RABBITS[i].cell != NULL)
+        {
+            if (RABBITS[i].cell->x == x && RABBITS[i].cell->y == y)
+                return &RABBITS[i];
+        }
+    }
+    return NULL;
+}
+
+Fox* get_fox(int x, int y){
+    for (int i = 0; i < R * C; i++)
+    {
+        if (FOXES[i].cell != NULL)
+        {
+            if (FOXES[i].cell->x == x && FOXES[i].cell->y == y)
+                return &FOXES[i];
+        }
+    }
+    return NULL;
 }
 
 Cell* load_ecosystem(char * argv[]){
@@ -409,14 +529,29 @@ Cell* load_ecosystem(char * argv[]){
     C = config[5];
     N = config[6];
 
-    Cell* system = malloc(R * C * sizeof(Cell));
+    Cell* system = calloc(R * C, sizeof(Cell));
 
+    RABBITS = calloc(R * C, sizeof(Rabbit));
 
+    for (int i = 0; i < C * R; i++)
+    {
+        RABBITS[i].cell = NULL;
+        RABBITS[i].gens = 0;
+        RABBITS[i].proc_age = 0;
+    }
+
+    FOXES = calloc(R * C, sizeof(Fox));
+
+    for (int i = 0; i < C * R; ++i)
+    {
+        FOXES[i].cell = NULL;
+        FOXES[i].gens = 0;
+        FOXES[i].proc_age = 0;
+        FOXES[i].food = 0;
+    }
+    
     int rabbit_count = 0;
     int fox_count = 0;
-
-    RABBITS = malloc(R * C * sizeof(Rabbit));
-    FOXES = malloc(R * C * sizeof(Fox));
 
     char line[50];
     while (fgets(line, sizeof(line), file))
@@ -426,42 +561,38 @@ Cell* load_ecosystem(char * argv[]){
         if (sscanf(line, "%s %d %d", name, &x, &y) == 3)
         {
             if (strcmp(name, "ROCK") == 0)
-                system[y * R + x].name = '*';
+                system[y * C + x].name = '*';
             else
-                system[y * R + x].name = name[0];
+                system[y * C + x].name = name[0];
 
-            if (system[y * R + x].name == 'R')
+            if (system[y * C + x].name == 'R')
             {
-                RABBITS[rabbit_count].cell = &system[y * R + x];
-                RABBITS[rabbit_count].gens = 0;
-                RABBITS[rabbit_count].proc_age = 0;
+                RABBITS[rabbit_count].cell = &system[y * C + x];
                 rabbit_count++;
             }
-            else if (system[y * R + x].name == 'F')
+            else if (system[y * C + x].name == 'F')
             {
-                FOXES[fox_count].cell = &system[y * R + x];
-                FOXES[fox_count].gens = 0;
-                FOXES[fox_count].proc_age = 0;
+                FOXES[fox_count].cell = &system[y * C + x];
                 fox_count++;
             }
-            system[y * R + x].x = x;
-            system[y * R + x].y = y;
+            system[y * C + x].x = x;
+            system[y * C + x].y = y;
         }
     }
 
     printf("Configuration: %d %d %d %d %d %d %d\n", GEN_PROC_RABBITS, GEN_PROC_FOXES, GEN_FOOD_FOXES, N_GEN, R, C, N);
 
 
-    for (int y = 0; y < C; y++)
+    for (int x = 0; x < R; x++)
     {
-        for (int x = 0; x < R; x++)
+        for (int y = 0; y < C; y++)
         {
-            if (system[y * R + x].name == '*' || system[y * R + x].name == 'R' || system[y * R + x].name == 'F')
+            if (system[y * C + x].name == '*' || system[y * C + x].name == 'R' || system[y * C + x].name == 'F')
                 continue;
 
-            system[y * R + x].name = ' ';
-            system[y * R + x].x = x;
-            system[y * R + x].y = y;
+            system[y * C + x].name = '.';
+            system[y * C + x].x = x;
+            system[y * C + x].y = y;
         }
     }
     
@@ -480,7 +611,10 @@ void display_ecosystem(Cell* system){
         printf("|");
         for (int x = 0; x < R; x++)
         {
-            printf("%c", system[y * R + x].name);
+            if (system[y * C + x].name == '.')
+                printf(" ");
+            else
+                printf("%c", system[y * C + x].name);
         }
         printf("|\n");
     }
