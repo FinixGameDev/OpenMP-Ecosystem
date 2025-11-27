@@ -58,9 +58,10 @@ int main(int argc, char *argv[])
 {
     Cell* system = load_ecosystem(argv);
     display_ecosystem(system);
-    GEN = N_GEN;
+    GEN = 0;
+    int max_gen = N_GEN;
 
-    while (N_GEN > 0)
+    while (GEN < max_gen)
     {
         //RUN SIMULATION HERE
         for (int i = 0; i < R * C; i++){
@@ -80,25 +81,9 @@ int main(int argc, char *argv[])
 
         kill_rabbits();
 
-        // DISPLAY CURRENT STATE
-        // for (int r = 0; r < R * C; r++)
-        // {
-        //     if (RABBITS[r].cell != NULL)
-        //     {
-        //         printf("RABBIT %d %d\n", RABBITS[r].cell->x, RABBITS[r].cell->y);
-        //     }
-        // }
-
-        // for (int f = 0; f < R * C; f++)
-        // {
-        //     if (FOXES[f].cell != NULL)
-        //     {
-        //         printf("FOX %d %d\n", FOXES[f].cell->x, FOXES[f].cell->y);
-        //     }
-        // }
-
-        printf("Gen: %d\n", GEN - N_GEN);
+        printf("Gen: %d\n", GEN + 1);
         N_GEN--;
+        GEN++;
     }
 
     printf("Configuration: %d %d %d %d %d %d %d\n", GEN_PROC_RABBITS, GEN_PROC_FOXES, GEN_FOOD_FOXES, N_GEN, R, C, N);
