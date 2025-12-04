@@ -73,34 +73,44 @@ int main(int argc, char *argv[])
     {
         system_copy = generate_empty_system(system);
 
+        printf("Simulating Generation %d...\n", GEN + 1);
+        printf("Moving Rabbits...\n");
         //RUN SIMULATION HERE
+        #pragma omp parallel for schedule(static)
         for (int i = 0; i < R * C; i++){
             if (RABBITS[i].cell != NULL)
                 move_rabbit(&RABBITS[i], system, system_copy);
         }
 
+        printf("Checking Rabbit Overlaps...\n");
         check_rabbit_overlap();
 
+        #pragma omp barrier
+
+        printf("Moving Foxes...\n");
+        #pragma omp parallel for schedule(static)
         for (int i = 0; i < R*C; i++)
         {
             if (FOXES[i].cell != NULL)
                 move_fox(&FOXES[i], system, system_copy);
         }
         
+        #pragma omp barrier
+
+        printf("Checking Fox Overlaps...\n");
         check_fox_overlap();
 
+        printf("Killing eaten Rabbits...\n");
         kill_rabbits();
 
+        printf("Finalizing Generation %d...\n", GEN + 1);
         memcpy(system, system_copy, R*C*sizeof(Cell));
         free(system_copy);
 
         printf("Gen: %d\n", GEN + 1);
-        display_ecosystem(system);
 
         N_GEN--;
         GEN++;
-
-        scanf("\n");
     }
 
     double end = omp_get_wtime();
@@ -142,57 +152,57 @@ void move_rabbit(Rabbit *rabbit, Cell* system, Cell* system_copy){
     Cell *north, *south, *east, *west;
 
     // Assign Neighbour cells
-    if (y - 1 < 0)
+    if (x - 1 < 0)
         north = NULL;
     else
     {
-        north = &system[(y - 1) * C + x];
+        north = &system[y * C + x - 1];
         
         if (north->name != '*' && north->name != 'F' && north->name != 'R')
         {
             P++;
-            north = &system_copy[(y - 1) * C + x];
+            north = &system_copy[y * C + x - 1];
         }
         else 
             north = NULL;
     }   
     
-    if (y + 1 >= R)
+    if (x + 1 >= C)
         south = NULL;
     else
     {
-        south = &system[(y + 1) * C + x];
+        south = &system[y * C + x + 1];
         if (south->name != '*' && south->name != 'F' && south->name != 'R')
         {
             P++;
-            south = &system_copy[(y + 1) * C + x];
+            south = &system_copy[y * C + x + 1];
         }
         else
             south = NULL;
     }
 
-    if (x + 1 >= C)
+    if (y + 1 >= R)
         east = NULL;
     else
     {
-        east = &system[y * C + x + 1];
+        east = &system[(y + 1) * C + x];
         if (east->name != '*' && east->name != 'F' && east->name != 'R'){
             P++;
-            east = &system_copy[y * C + x + 1];
+            east = &system_copy[(y + 1) * C + x];
         }
         else 
             east = NULL; 
     }
 
     
-    if (x - 1 < 0)
+    if (y - 1 < 0)
         west = NULL;
     else
     {
-        west = &system[y * C + x - 1];
+        west = &system[(y - 1) * C + x];
         if (west->name != '*' && west->name != 'F' && west->name != 'R'){
             P++;
-            west = &system_copy[y * C + x - 1];
+            west = &system_copy[(y - 1) * C + x];
         }
         else
             west = NULL;
@@ -247,61 +257,80 @@ void fox_cell_shift(Fox *fox, Cell* to){
 }
 
 void check_rabbit_overlap(){
-    for (int i = 0; i < C * R; i++)
-    {
-        if (RABBITS[i].cell != NULL)
-        {
-            for (int j = i + 1; j < C * R; j++)
-            {
-                if (RABBITS[j].cell != NULL)
-                {
-                    if (RABBITS[i].cell->x == RABBITS[j].cell->x && RABBITS[i].cell->y == RABBITS[j].cell->y)
-                    {
-                        if (RABBITS[i].gens > RABBITS[j].gens)
-                            kill_rabbit(&RABBITS[j]);
-                        else
-                            kill_rabbit(&RABBITS[i]);
+    int total = C * R;
+    int *kill = calloc(total, sizeof(int));  // 0 = keep, 1 = kill
 
-                        break;
-                    }
-                }
+    #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < total; i++) {
+        if (RABBITS[i].cell == NULL) continue;
+
+        for (int j = i + 1; j < total; j++) {
+            if (RABBITS[j].cell == NULL) continue;
+
+            if (RABBITS[i].cell->x == RABBITS[j].cell->x &&
+                RABBITS[i].cell->y == RABBITS[j].cell->y)
+            {
+                // decide who dies
+                if (RABBITS[i].gens > RABBITS[j].gens)
+                    kill[j] = 1;
+                else
+                    kill[i] = 1;
             }
         }
     }
-}
+
+    #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < total; i++) {
+        if (kill[i])
+            kill_rabbit(&RABBITS[i]);
+    }
+
+    free(kill);
+} 
 
 void check_fox_overlap(){
+    int total = C * R;
+    int *kill = calloc(total, sizeof(int));  // 0 = keep, 1 = kill
+
+    #pragma omp parallel for schedule(dynamic)
     for (int i = 0; i < C * R; i++)
     {
-        if (FOXES[i].cell != NULL)
+        if (FOXES[i].cell == NULL) continue;
+
+        for (int j = i + 1; j < C * R; j++)
         {
-            for (int j = i + 1; j < C * R; j++)
+            if (FOXES[j].cell == NULL) continue;
+
+            if (FOXES[i].cell->x == FOXES[j].cell->x && FOXES[i].cell->y == FOXES[j].cell->y)
             {
-                if (FOXES[j].cell != NULL)
-                {
-                    if (FOXES[i].cell->x == FOXES[j].cell->x && FOXES[i].cell->y == FOXES[j].cell->y)
+                 if (FOXES[i].cell->x == FOXES[j].cell->x && FOXES[i].cell->y == FOXES[j].cell->y){
+                    if (FOXES[i].gens > FOXES[j].gens)
+                        kill[j] = 1;
+                    else if (FOXES[i].gens == FOXES[j].gens)
                     {
-                        if (FOXES[i].gens > FOXES[j].gens)
-                            kill_fox(&FOXES[j]);
-                        else if (FOXES[i].gens == FOXES[j].gens)
-                        {
-                            if (FOXES[i].food > FOXES[j].food)
-                                kill_fox(&FOXES[j]);
-                            else
-                                kill_fox(&FOXES[i]);
-                        }
+                        if (FOXES[i].food > FOXES[j].food)
+                            kill[j] = 1;
                         else
-                            kill_fox(&FOXES[i]);
-                        
-                        break;
+                            kill[i] = 1;
                     }
+                    else
+                        kill[i] = 1;
                 }
             }
         }
     }
+
+    #pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < total; i++) {
+        if (kill[i])
+            kill_fox(&FOXES[i]);
+    }
+
+    free(kill);
 }
 
 void kill_rabbits(){
+    #pragma omp parallel for
     for (int i = 0; i < C * R; i++)
     {
         if (RABBITS[i].cell != NULL && RABBITS[i].cell->name == 'F')  
@@ -349,9 +378,6 @@ void generate_fox(int x, int y,Cell* system){
             FOXES[i].proc_age = 0;
             FOXES[i].food = 0;
             N++;
-
-
-            //printf("A fox has been born at (%d, %d).\n", x, y);
             return;
             
         }
@@ -368,11 +394,11 @@ void move_fox(Fox* fox, Cell* system, Cell* system_copy){
     Cell *north, *south, *east, *west;
 
     // Assign Neighbour cells
-    if (y - 1 < 0)
+    if (x - 1 < 0)
         north = NULL;
     else
     {
-        north = &system[(y - 1) * R + x];
+        north = &system[y * R + x - 1];
         
         if (north->name == '*' || north->name == 'F')
             north = NULL;
@@ -382,15 +408,15 @@ void move_fox(Fox* fox, Cell* system, Cell* system_copy){
             P++;
 
         if (north != NULL){
-            north = &system_copy[(y - 1) * R + x];
+            north = &system_copy[y * R + x - 1];
         }
     }   
-    
-    if (y + 1 >= R)
+
+    if (x + 1 >= C)
         south = NULL;
     else
     {
-        south = &system[(y + 1) * R + x];
+        south = &system[y * R + x + 1];
         if (south->name == '*' || south->name == 'F')
             south = NULL;
         else if (south->name == 'R')
@@ -399,15 +425,15 @@ void move_fox(Fox* fox, Cell* system, Cell* system_copy){
             P++;
 
         if (south != NULL){
-            south = &system_copy[(y + 1) * R + x];
+            south = &system_copy[y * R + x + 1];
         }
     }
 
-    if (x + 1 >= C)
+    if (y + 1 >= R)
         east = NULL;
     else
     {
-        east = &system[y * R + x + 1];
+        east = &system[(y + 1) * R + x];
         if (east->name == '*' || east->name == 'F')
             east = NULL; 
         else if (east->name == 'R')
@@ -416,16 +442,16 @@ void move_fox(Fox* fox, Cell* system, Cell* system_copy){
             P++;
 
         if (east != NULL){
-            east = &system_copy[y * R + x + 1];
+            east = &system_copy[(y + 1) * R + x];
         }
     }
 
     
-    if (x - 1 < 0)
+    if (y - 1 < 0)
         west = NULL;
     else
     {
-        west = &system[y * R + x - 1];
+        west = &system[(y - 1)* R + x];
         if (west->name == '*' || west->name == 'F')
             west = NULL;
         else if (west->name == 'R')
@@ -434,7 +460,7 @@ void move_fox(Fox* fox, Cell* system, Cell* system_copy){
             P++;
 
         if (west != NULL){
-            west = &system_copy[y * R + x - 1];
+            west = &system_copy[(y - 1) * R + x];
         }
     }
 
